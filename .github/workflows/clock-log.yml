@@ -1,4 +1,4 @@
-name: Clock Log via Labels
+name: Smart Clock (Single Select)
 
 on:
   issues:
@@ -8,40 +8,52 @@ permissions:
   issues: write
 
 jobs:
-  log-clock:
+  clock:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Add clock log
+      - name: Handle Clock
         uses: actions/github-script@v7
         with:
           script: |
-            console.log("EVENT:", context.payload);
+            const label = context.payload.label?.name || "";
+            const issue_number = context.payload.issue.number;
 
-            const label = context.payload.label?.name;
-            const issue_number = context.payload.issue?.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
-            console.log("LABEL:", label);
-
-            if (!label || !issue_number) {
-              console.log("Missing data");
-              return;
+            // helper to remove label
+            async function removeLabel(name) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number,
+                  name
+                });
+              } catch (e) {}
             }
 
+            // START
             if (label === "Clock: Start") {
+              await removeLabel("Clock: Stop");
+
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue_number,
+                owner,
+                repo,
+                issue_number,
                 body: "⏱️ Clock started"
               });
             }
 
+            // STOP
             if (label === "Clock: Stop") {
+              await removeLabel("Clock: Start");
+
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue_number,
+                owner,
+                repo,
+                issue_number,
                 body: "⏱️ Clock stopped"
               });
             }
