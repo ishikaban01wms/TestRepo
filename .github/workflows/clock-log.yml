@@ -1,71 +1,88 @@
-name: Clock Automation via GitHub Actions
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+name: Clock Tracker Final
 
 on:
   workflow_dispatch:
-  issues:
-    types: [opened, edited]
-  pull_request:
-    types: [opened, edited, synchronize]
-  project_card:
-    types: [created, edited]
+  schedule:
+    - cron: "*/2 * * * *"
 
 jobs:
-  clock_job:
+  track-clock:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Determine Clock Status
-        id: clock
-        run: |
-          echo "Event: $GITHUB_EVENT_NAME"
-
-          CLOCK_STATUS=""
-
-          if [[ "${GITHUB_EVENT_NAME}" == "project_card" ]]; then
-            CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
-            DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                https://api.github.com/projects/columns/cards/$CARD_ID)
-            CLOCK_STATUS=$(echo $DATA | jq -r '.note // empty')
-
-          elif [[ "${GITHUB_EVENT_NAME}" == "issues" ]]; then
-            ISSUE_NUMBER=$(jq -r '.issue.number' $GITHUB_EVENT_PATH)
-            DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER)
-            CLOCK_STATUS=$(echo $DATA | jq -r '.fields[]? | select(.name|test("clock";"i")) | .value // empty')
-
-          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            PR_NUMBER=$(jq -r '.pull_request.number' $GITHUB_EVENT_PATH)
-            DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER)
-            CLOCK_STATUS=$(echo $DATA | jq -r '.fields[]? | select(.name|test("clock";"i")) | .value // empty')
-
-          echo "Detected Clock Status: $CLOCK_STATUS"
-
-          if [[ "$CLOCK_STATUS" == *"start"* ]]; then
-            echo "status=start" >> $GITHUB_ENV
-          else
-            echo "status=stop" >> $GITHUB_ENV
-
-      - name: Update Project Card Note
-        if: ${{ github.event_name == 'project_card' }}
-        run: |
-          CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
-          curl -X PATCH \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"note\":\"${{ env.status }}\"}" \
-            https://api.github.com/projects/columns/cards/$CARD_ID
-
-      - name: Post Clock Comment for Issue/PR
-        if: ${{ github.event_name == 'issues' || github.event_name == 'pull_request' }}
-        uses: peter-evans/create-or-update-comment@v4
+      - name: Fetch Project Data + Log Clock
+        uses: actions/github-script@v7
         with:
-          issue-number: ${{ github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request' && github.event.pull_request.number }}
-          body: |
-            ${{ env.status == 'start' && ':alarm_clock: Clock Started!' || ':stopwatch: Clock Stopped!' }}
+          script: |
+            const query = `
+            query {
+              viewer {
+                projectsV2(first: 10) {
+                  nodes {
+                    title
+                    items(first: 20) {
+                      nodes {
+                        content {
+                          ... on Issue {
+                            number
+                            title
+                          }
+                        }
+                        fieldValues(first: 20) {
+                          nodes {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              name
+                              field {
+                                ... on ProjectV2SingleSelectField {
+                                  name
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }`;
+
+            const result = await github.graphql(query);
+
+            console.log("FULL DATA:");
+            console.log(JSON.stringify(result, null, 2));
+
+            for (const project of result.viewer.projectsV2.nodes) {
+              console.log("Project:", project.title);
+
+              for (const item of project.items.nodes) {
+                if (!item.content) continue;
+
+                const issue_number = item.content.number;
+
+                for (const field of item.fieldValues.nodes) {
+                  console.log("Field:", field.field?.name, "Value:", field.name);
+
+                  // 👇 TRY MATCH (may or may not match yet)
+                  if (field.field?.name === "Clock") {
+
+                    if (field.name === "Start") {
+                      await github.rest.issues.createComment({
+                        ...context.repo,
+                        issue_number,
+                        body: "⏱️ Clock started"
+                      });
+                    }
+
+                    if (field.name === "Stop") {
+                      await github.rest.issues.createComment({
+                        ...context.repo,
+                        issue_number,
+                        body: "⏱️ Clock stopped"
+                      });
+                    }
+
+                  }
+                }
+              }
+            }
