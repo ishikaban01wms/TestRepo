@@ -1,7 +1,7 @@
-name: Smart Clock Entry Automation
+name: Clock Automation via GitHub Actions
 
 on:
-  workflow_dispatch:       # Manual run
+  workflow_dispatch:
   issues:
     types: [opened, edited]
   pull_request:
@@ -10,7 +10,7 @@ on:
     types: [created, edited]
 
 jobs:
-  clock_entry:
+  clock_job:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -23,27 +23,26 @@ jobs:
 
           CLOCK_STATUS=""
 
-          # Detect Project Card
+          # Project Card
           if [[ "${GITHUB_EVENT_NAME}" == "project_card" ]]; then
             CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
-            DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 https://api.github.com/projects/columns/cards/$CARD_ID)
             CLOCK_STATUS=$(echo $DATA | jq -r '.note // empty')
 
-          # Detect Issue
+          # Issue
           elif [[ "${GITHUB_EVENT_NAME}" == "issues" ]]; then
             ISSUE_NUMBER=$(jq -r '.issue.number' $GITHUB_EVENT_PATH)
-            DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER)
             CLOCK_STATUS=$(echo $DATA | jq -r '.fields[]? | select(.name|test("clock";"i")) | .value // empty')
 
-          # Detect Pull Request
+          # Pull Request
           elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             PR_NUMBER=$(jq -r '.pull_request.number' $GITHUB_EVENT_PATH)
-            DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER)
             CLOCK_STATUS=$(echo $DATA | jq -r '.fields[]? | select(.name|test("clock";"i")) | .value // empty')
-          fi
 
           echo "Detected Clock Status: $CLOCK_STATUS"
 
@@ -52,9 +51,20 @@ jobs:
           else
             echo "status=stop" >> $GITHUB_ENV
 
-      - name: Post Clock Comment
+      - name: Update Project Card
+        if: ${{ github.event_name == 'project_card' }}
+        run: |
+          CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
+          curl -X PATCH \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"note\":\"${{ env.status }}\"}" \
+            https://api.github.com/projects/columns/cards/$CARD_ID
+
+      - name: Post Clock Comment for Issue/PR
+        if: ${{ github.event_name == 'issues' || github.event_name == 'pull_request' }}
         uses: peter-evans/create-or-update-comment@v4
         with:
-          issue-number: ${{ github.event.issue.number || github.event.pull_request.number || github.event.project_card.content_url | split("/") | last }}
+          issue-number: ${{ github.event.issue.number || github.event.pull_request.number }}
           body: |
             ${{ env.status == 'start' && ':alarm_clock: Clock Started!' || ':stopwatch: Clock Stopped!' }}
