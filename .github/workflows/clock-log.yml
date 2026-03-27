@@ -12,6 +12,7 @@ on:
 jobs:
   clock_job:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -51,7 +52,7 @@ jobs:
           else
             echo "status=stop" >> $GITHUB_ENV
 
-      - name: Update Project Card
+      - name: Update Project Card Note
         if: ${{ github.event_name == 'project_card' }}
         run: |
           CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
@@ -65,6 +66,6 @@ jobs:
         if: ${{ github.event_name == 'issues' || github.event_name == 'pull_request' }}
         uses: peter-evans/create-or-update-comment@v4
         with:
-          issue-number: ${{ github.event.issue.number || github.event.pull_request.number }}
+          issue-number: ${{ github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request' && github.event.pull_request.number }}
           body: |
             ${{ env.status == 'start' && ':alarm_clock: Clock Started!' || ':stopwatch: Clock Stopped!' }}
