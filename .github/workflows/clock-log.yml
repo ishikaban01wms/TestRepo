@@ -1,16 +1,16 @@
 name: Track Clock Field (Project)
 
 on:
+  workflow_dispatch:   # manual run ke liye
   schedule:
-    - cron: "*/2 * * * *"   # har 2 min me check karega
-  workflow_dispatch:        # manual run bhi kar sakti ho
+    - cron: "*/2 * * * *"   # har 2 min me run hoga
 
 jobs:
   check-clock:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check project field
+      - name: Check Project Clock Field
         uses: actions/github-script@v7
         with:
           script: |
@@ -25,9 +25,10 @@ jobs:
                         content {
                           ... on Issue {
                             number
+                            title
                           }
                         }
-                        fieldValues(first: 10) {
+                        fieldValues(first: 20) {
                           nodes {
                             ... on ProjectV2ItemFieldSingleSelectValue {
                               name
@@ -49,6 +50,8 @@ jobs:
             const result = await github.graphql(query);
 
             for (const project of result.viewer.projectsV2.nodes) {
+              if (project.title !== "TestProject") continue;
+
               for (const item of project.items.nodes) {
                 if (!item.content) continue;
 
@@ -56,7 +59,7 @@ jobs:
 
                 for (const field of item.fieldValues.nodes) {
                   if (field.field.name === "Clock") {
-                    
+
                     if (field.name === "Start") {
                       await github.rest.issues.createComment({
                         ...context.repo,
