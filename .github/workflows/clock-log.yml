@@ -1,16 +1,16 @@
-name: Track Clock Field (Project)
+name: Clock Tracker Final
 
 on:
-  workflow_dispatch:   # manual run ke liye
+  workflow_dispatch:
   schedule:
-    - cron: "*/2 * * * *"   # har 2 min me run hoga
+    - cron: "*/2 * * * *"
 
 jobs:
-  check-clock:
+  track-clock:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check Project Clock Field
+      - name: Fetch Project Data + Log Clock
         uses: actions/github-script@v7
         with:
           script: |
@@ -49,8 +49,11 @@ jobs:
 
             const result = await github.graphql(query);
 
+            console.log("FULL DATA:");
+            console.log(JSON.stringify(result, null, 2));
+
             for (const project of result.viewer.projectsV2.nodes) {
-              if (project.title !== "TestProject") continue;
+              console.log("Project:", project.title);
 
               for (const item of project.items.nodes) {
                 if (!item.content) continue;
@@ -58,7 +61,10 @@ jobs:
                 const issue_number = item.content.number;
 
                 for (const field of item.fieldValues.nodes) {
-                  if (field.field.name === "Clock") {
+                  console.log("Field:", field.field?.name, "Value:", field.name);
+
+                  // 👇 TRY MATCH (may or may not match yet)
+                  if (field.field?.name === "Clock") {
 
                     if (field.name === "Start") {
                       await github.rest.issues.createComment({
