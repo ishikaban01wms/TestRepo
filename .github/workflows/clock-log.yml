@@ -1,59 +1,61 @@
-name: Smart Clock (Single Select)
+name: Clock Entry Automation
 
 on:
+  workflow_dispatch:       # Manual run
   issues:
-    types: [labeled]
-
-permissions:
-  issues: write
+    types: [opened, edited]
+  pull_request:
+    types: [opened, edited, synchronize]
+  project_card:
+    types: [created, edited]
 
 jobs:
-  clock:
+  clock_entry:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Handle Clock
-        uses: actions/github-script@v7
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Determine Clock Status
+        id: clock
+        run: |
+          echo "Event: $GITHUB_EVENT_NAME"
+
+          CLOCK_STATUS=""
+
+          # Project Card
+          if [[ "${GITHUB_EVENT_NAME}" == "project_card" ]]; then
+            CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
+            DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                https://api.github.com/projects/columns/cards/$CARD_ID)
+            CLOCK_STATUS=$(echo $DATA | jq -r '.note')
+
+          # Issue
+          elif [[ "${GITHUB_EVENT_NAME}" == "issues" ]]; then
+            ISSUE_NUMBER=$(jq -r '.issue.number' $GITHUB_EVENT_PATH)
+            DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER)
+            # Replace 'clock_field_name' with your exact field name if custom
+            CLOCK_STATUS=$(echo $DATA | jq -r '.fields.clock_field_name')
+
+          # Pull Request
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            PR_NUMBER=$(jq -r '.pull_request.number' $GITHUB_EVENT_PATH)
+            DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER)
+            CLOCK_STATUS=$(echo $DATA | jq -r '.fields.clock_field_name')
+          fi
+
+          echo "Clock status detected: $CLOCK_STATUS"
+
+          if [[ "$CLOCK_STATUS" == *"start"* ]]; then
+            echo "status=start" >> $GITHUB_ENV
+          else
+            echo "status=stop" >> $GITHUB_ENV
+
+      - name: Post Clock Comment
+        uses: peter-evans/create-or-update-comment@v4
         with:
-          script: |
-            const label = context.payload.label?.name || "";
-            const issue_number = context.payload.issue.number;
-
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-
-            // helper to remove label
-            async function removeLabel(name) {
-              try {
-                await github.rest.issues.removeLabel({
-                  owner,
-                  repo,
-                  issue_number,
-                  name
-                });
-              } catch (e) {}
-            }
-
-            // START
-            if (label === "Clock: Start") {
-              await removeLabel("Clock: Stop");
-
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body: "⏱️ Clock started"
-              });
-            }
-
-            // STOP
-            if (label === "Clock: Stop") {
-              await removeLabel("Clock: Start");
-
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body: "⏱️ Clock stopped"
-              });
-            }
+          issue-number: ${{ github.event.issue.number || github.event.pull_request.number || github.event.project_card.content_url | split("/") | last }}
+          body: |
+            ${{ env.status == 'start' && ':alarm_clock: Clock Started!' || ':stopwatch: Clock Stopped!' }}
