@@ -1,0 +1,33 @@
+name: Clock Activity Log
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  log-clock:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add log comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = context.payload.label.name;
+            const issue_number = context.payload.issue.number;
+
+            if (label === "Clock: Start") {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number,
+                body: "⏱️ Clock started"
+              });
+            }
+
+            if (label === "Clock: Stop") {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number,
+                body: "⏱️ Clock stopped"
+              });
+            }
