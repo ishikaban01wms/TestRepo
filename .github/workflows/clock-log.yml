@@ -1,86 +1,33 @@
-name: Clock Tracker Final
+name: Clock Log via Labels
 
 on:
-  workflow_dispatch:
+  issues:
+    types: [labeled]
 
 jobs:
-  track-clock:
+  log-clock:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Debug + Track Clock
+      - name: Add clock log comment
         uses: actions/github-script@v7
         with:
           script: |
-            const query = `
-            query {
-              viewer {
-                projectsV2(first: 10) {
-                  nodes {
-                    title
-                    items(first: 20) {
-                      nodes {
-                        content {
-                          ... on Issue {
-                            number
-                            title
-                          }
-                        }
-                        fieldValues(first: 20) {
-                          nodes {
-                            ... on ProjectV2ItemFieldSingleSelectValue {
-                              name
-                              field {
-                                ... on ProjectV2SingleSelectField {
-                                  name
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }`;
+            const label = context.payload.label.name;
+            const issue_number = context.payload.issue.number;
 
-            const result = await github.graphql(query);
+            if (label === "Clock: Start") {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number,
+                body: "⏱️ Clock started"
+              });
+            }
 
-            for (const project of result.viewer.projectsV2.nodes) {
-              console.log("PROJECT:", project.title);
-
-              if (project.title !== "TestProject") continue;
-
-              for (const item of project.items.nodes) {
-                if (!item.content) continue;
-
-                const issue_number = item.content.number;
-
-                for (const field of item.fieldValues.nodes) {
-
-                  console.log("FIELD:", field.field?.name, "VALUE:", field.name);
-
-                  // actual logic
-                  if (field.field?.name === "Clock") {
-
-                    if (field.name === "Start") {
-                      await github.rest.issues.createComment({
-                        ...context.repo,
-                        issue_number,
-                        body: "⏱️ Clock started"
-                      });
-                    }
-
-                    if (field.name === "Stop") {
-                      await github.rest.issues.createComment({
-                        ...context.repo,
-                        issue_number,
-                        body: "⏱️ Clock stopped"
-                      });
-                    }
-
-                  }
-                }
-              }
+            if (label === "Clock: Stop") {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number,
+                body: "⏱️ Clock stopped"
+              });
             }
