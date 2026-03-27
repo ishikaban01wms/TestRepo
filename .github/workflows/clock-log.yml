@@ -1,33 +1,79 @@
-name: Clock Activity Log
+name: Track Clock Field (Project)
 
 on:
-  issues:
-    types: [labeled]
+  schedule:
+    - cron: "*/2 * * * *"   # har 2 min me check karega
+  workflow_dispatch:        # manual run bhi kar sakti ho
 
 jobs:
-  log-clock:
+  check-clock:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Add log comment
+      - name: Check project field
         uses: actions/github-script@v7
         with:
           script: |
-            const label = context.payload.label.name;
-            const issue_number = context.payload.issue.number;
+            const query = `
+            query {
+              viewer {
+                projectsV2(first: 10) {
+                  nodes {
+                    title
+                    items(first: 20) {
+                      nodes {
+                        content {
+                          ... on Issue {
+                            number
+                          }
+                        }
+                        fieldValues(first: 10) {
+                          nodes {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              name
+                              field {
+                                ... on ProjectV2SingleSelectField {
+                                  name
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }`;
 
-            if (label === "Clock: Start") {
-              await github.rest.issues.createComment({
-                ...context.repo,
-                issue_number,
-                body: "⏱️ Clock started"
-              });
-            }
+            const result = await github.graphql(query);
 
-            if (label === "Clock: Stop") {
-              await github.rest.issues.createComment({
-                ...context.repo,
-                issue_number,
-                body: "⏱️ Clock stopped"
-              });
+            for (const project of result.viewer.projectsV2.nodes) {
+              for (const item of project.items.nodes) {
+                if (!item.content) continue;
+
+                const issue_number = item.content.number;
+
+                for (const field of item.fieldValues.nodes) {
+                  if (field.field.name === "Clock") {
+                    
+                    if (field.name === "Start") {
+                      await github.rest.issues.createComment({
+                        ...context.repo,
+                        issue_number,
+                        body: "⏱️ Clock started"
+                      });
+                    }
+
+                    if (field.name === "Stop") {
+                      await github.rest.issues.createComment({
+                        ...context.repo,
+                        issue_number,
+                        body: "⏱️ Clock stopped"
+                      });
+                    }
+
+                  }
+                }
+              }
             }
