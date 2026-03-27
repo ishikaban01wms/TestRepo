@@ -1,36 +1,35 @@
-name: Clock Buttons
+name: Auto Comment on Label
 
 on:
-  issue_comment:
-    types: [created]
-
-permissions:
-  issues: write
+  issues:
+    types: [labeled]
 
 jobs:
-  clock:
+  comment:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Handle commands
+      - name: Add comment when label is added
         uses: actions/github-script@v7
         with:
           script: |
-            const comment = context.payload.comment.body.toLowerCase();
+            const label = context.payload.label.name;
             const issue_number = context.payload.issue.number;
 
-            if (comment.includes("/start")) {
-              await github.rest.issues.createComment({
-                ...context.repo,
-                issue_number,
-                body: "⏱️ Clock started"
+            if (label === "start") {
+              github.rest.issues.createComment({
+                issue_number: issue_number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "🟢 Started working on this issue"
               });
             }
 
-            if (comment.includes("/stop")) {
-              await github.rest.issues.createComment({
-                ...context.repo,
-                issue_number,
-                body: "⏱️ Clock stopped"
+            if (label === "stop") {
+              github.rest.issues.createComment({
+                issue_number: issue_number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "🔴 Stopped working on this issue"
               });
             }
