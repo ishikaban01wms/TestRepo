@@ -1,4 +1,4 @@
-name: Clock Entry Automation
+name: Smart Clock Entry Automation
 
 on:
   workflow_dispatch:       # Manual run
@@ -23,30 +23,29 @@ jobs:
 
           CLOCK_STATUS=""
 
-          # Project Card
+          # Detect Project Card
           if [[ "${GITHUB_EVENT_NAME}" == "project_card" ]]; then
             CARD_ID=$(jq -r '.project_card.id' $GITHUB_EVENT_PATH)
             DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 https://api.github.com/projects/columns/cards/$CARD_ID)
-            CLOCK_STATUS=$(echo $DATA | jq -r '.note')
+            CLOCK_STATUS=$(echo $DATA | jq -r '.note // empty')
 
-          # Issue
+          # Detect Issue
           elif [[ "${GITHUB_EVENT_NAME}" == "issues" ]]; then
             ISSUE_NUMBER=$(jq -r '.issue.number' $GITHUB_EVENT_PATH)
             DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 https://api.github.com/repos/${{ github.repository }}/issues/$ISSUE_NUMBER)
-            # Replace 'clock_field_name' with your exact field name if custom
-            CLOCK_STATUS=$(echo $DATA | jq -r '.fields.clock_field_name')
+            CLOCK_STATUS=$(echo $DATA | jq -r '.fields[]? | select(.name|test("clock";"i")) | .value // empty')
 
-          # Pull Request
+          # Detect Pull Request
           elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             PR_NUMBER=$(jq -r '.pull_request.number' $GITHUB_EVENT_PATH)
             DATA=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER)
-            CLOCK_STATUS=$(echo $DATA | jq -r '.fields.clock_field_name')
+            CLOCK_STATUS=$(echo $DATA | jq -r '.fields[]? | select(.name|test("clock";"i")) | .value // empty')
           fi
 
-          echo "Clock status detected: $CLOCK_STATUS"
+          echo "Detected Clock Status: $CLOCK_STATUS"
 
           if [[ "$CLOCK_STATUS" == *"start"* ]]; then
             echo "status=start" >> $GITHUB_ENV
